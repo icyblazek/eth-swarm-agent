@@ -1,0 +1,6 @@
+include
+build
+cmake-build-debug
+lib
+.idea
+.vs

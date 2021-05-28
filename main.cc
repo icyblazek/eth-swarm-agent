@@ -7,10 +7,17 @@
 #include <httplib.h>
 #include <nlohmann/json.hpp>
 #include "args.hxx"
+#include <spdlog/spdlog.h>
+
 
 #ifdef _WIN32
+#pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "IPHLPAPI.lib")
+#pragma comment(lib, "Psapi.lib")
+#pragma comment(lib, "Userenv.lib")
+#pragma comment(lib, "uv.lib")
 #else
-#include <spdlog/spdlog.h>
+
 #endif // _WIN32
 
 using namespace std;
