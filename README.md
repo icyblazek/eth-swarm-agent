@@ -31,8 +31,9 @@ solve data security and IP management problems without public network.
     please visit http://eth-swarm.io
 ```
 
-##thanks
+## thanks
 1. [cpp-httplib] https://github.com/yhirose/cpp-httplib
 2. [spdlog] https://github.com/gabime/spdlog
 3. [nlohmann-json] https://github.com/nlohmann/json
 4. [args]https://github.com/Taywee/args
+5. [libuv]https://github.com/libuv/libuv 
