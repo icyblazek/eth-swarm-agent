@@ -290,7 +290,7 @@ int main(int argc, char **argv) {
     args::ValueFlag<string> node_id(parser, "", "eth-swarm platform node id", {'n', "nid"});
     args::ValueFlag<string> host(parser, "", "default localhost", {"host"}, "localhost");
     args::ValueFlag<int> debug_port(parser, "", "default 1635", {'d'}, 1635);
-    args::ValueFlag<string> gateway(parser, "", "default gateway: eth-swarm.io", {'g'}, "eth-swarm.io");
+    args::ValueFlag<string> gateway(parser, "", "default gateway: eth-swarm.io", {'g'}, "api.eth-swarm.io");
     args::ValueFlag<int> gateway_port(parser, "", "default gateway port: 80", {"gPort"}, 80);
     args::ValueFlag<bool> auto_cashout(parser, "", "auto cashout, default disable", {"auto"}, false);
     args::ValueFlag<int> upload_interval(parser, "min", "upload interval, default 5 min", {'t'}, 5);
