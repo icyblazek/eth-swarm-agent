@@ -12,8 +12,8 @@ solve data security and IP management problems without public network.
 ## how do i use it?
 
 ```bash
-  ./bee_agent [OPTIONS]
-  
+  ./bee_agent {OPTIONS}
+
     swarm bee data agent!
     source code: https://github.com/icyblazek/eth-swarm-agent
 
@@ -26,7 +26,8 @@ solve data security and IP management problems without public network.
       -g                                default gateway: eth-swarm.io
       --gPort                           default gateway port: 80
       --auto                            auto cashout, default disable
-      -t[seconds]                       upload interval, default 5 min
+      -t[min]                           upload interval, default 5 min
+      --upload                          auto upload data, default enable
 
     please visit http://eth-swarm.io
 ```
