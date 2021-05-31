@@ -25,10 +25,14 @@ using namespace std;
 string g_host = "localhost";
 int g_debug_port = 1635;
 string g_gateway = "eth-swarm.io";
+string g_nodeId = "";
 int g_gateway_port = 80;
 bool g_auto_cashout = false;
-int g_upload_interval = 300;
+int g_upload_interval = 1000 * 60;
+bool g_auto_upload = true;
 httplib::Client *g_httpClient = nullptr;
+std::set<string> *g_tx_upload_queue = new set<string>();
+std::set<string> *g_tx_uploaded_queue = new set<string>();
 
 std::tuple<int, string> bee_health(){
     int res_code = -1;
@@ -100,7 +104,10 @@ std::tuple<int, std::list<nlohmann::json>> bee_lastcheques() {
             if (json.contains("lastcheques")){
                 nlohmann::json::array_t lastcheques = json.at("lastcheques");
                 for (auto & lastcheque : lastcheques){
-                    peers.push_back(lastcheque);
+                    auto lastReceived = lastcheque.at("lastreceived");
+                    if (lastReceived != nullptr){
+                        peers.push_back(lastcheque);
+                    }
                 }
             }
         }
@@ -110,16 +117,16 @@ std::tuple<int, std::list<nlohmann::json>> bee_lastcheques() {
     return std::tuple<int, std::list<nlohmann::json>>(res_code, peers);
 }
 
-long bee_get_cumulative_payout(const string& peer){
+double bee_get_cumulative_payout(const string& peer){
     long payout = 0;
     
     if (auto res = g_httpClient->Get(("/chequebook/cheque/" + peer).c_str())){
         if (res && res->status == 200){
             auto json = nlohmann::json::parse(res->body);
             if (json.contains("lastreceived")){
-                auto lastreceived = json.at("lastreceived");
-                if (lastreceived.contains("payout")){
-                    payout = lastreceived.at("payout").get<long>();
+                auto lastReceived = json.at("lastreceived");
+                if (lastReceived != nullptr && lastReceived.contains("payout")){
+                    payout = lastReceived.at("payout").get<double>();
                 }
             }
         }
@@ -127,21 +134,35 @@ long bee_get_cumulative_payout(const string& peer){
     return payout;
 }
 
-long bee_get_last_cashed_payout(const string& peer){
-    long payout = 0;
+double bee_get_last_cashed_payout(const string& peer){
+    double payout = 0;
 
     if (auto res = g_httpClient->Get(("/chequebook/cashout/" + peer).c_str())){
-        if (res && res->status == 200){
-            auto json = nlohmann::json::parse(res->body);
-            if (json.contains("cumulativePayout")){
-                payout = json.at("cumulativePayout").get<long>();
+        if (res){
+            char tx[512];
+            if (res->status == 200){
+                auto json = nlohmann::json::parse(res->body);
+                if (json.contains("cumulativePayout")){
+                    payout = json.at("cumulativePayout").get<double>();
+                    auto transactionHash = json.at("transactionHash").get<string>();
+
+                    sprintf(tx, "%s,%s,%f", peer.c_str(), transactionHash.c_str(), payout);
+                }
+            }else if (res->status == 404){
+                sprintf(tx, "%s,%s,%f", peer.c_str(), "", payout);
+            }
+            string txStr(tx);
+
+            auto iter = g_tx_uploaded_queue->find(txStr);
+            if (iter == g_tx_uploaded_queue->end()){
+                g_tx_upload_queue->insert(txStr);
             }
         }
     }
     return payout;
 }
 
-long bee_get_uncashed_amount(const string& peer){
+double bee_get_uncashed_amount(const string& peer){
     auto cumulativePayout = bee_get_cumulative_payout(peer);
     if (cumulativePayout <= 0){
         return 0;
@@ -150,7 +171,7 @@ long bee_get_uncashed_amount(const string& peer){
     return cumulativePayout - cashedPayout;
 }
 
-bool bee_cashout(const string& peer, long uncashedAmount){
+bool bee_cashout(const string& peer, double uncashedAmount){
     bool success = false;
     spdlog::info("uncashed cheque for {} ({} uncashed)", peer, uncashedAmount);
     if (auto res = g_httpClient->Post(("/chequebook/cashout/" + peer).c_str())){
@@ -161,6 +182,11 @@ bool bee_cashout(const string& peer, long uncashedAmount){
                 if (transactionHash.length() > 0){
                     success = true;
                     spdlog::info("cashing out cheque for {} in transaction {}", peer, transactionHash);
+
+                    char tx[512];
+                    sprintf(tx, "%s,%s,%f", peer.c_str(), transactionHash.c_str(), uncashedAmount);
+                    string txStr(tx);
+                    g_tx_upload_queue->insert(txStr);
                 }
             }else {
                 auto code = json.at("code").get<int>();
@@ -181,25 +207,24 @@ void timer_cb(uv_timer_t* handle){
     auto health = bee_health();
     int result_code = std::get<0>(health);
     if (result_code == 0){
+        data["nodeId"] = g_nodeId;
+        data["version"] = std::get<1>(health);
         data["status"] = "ok";
         data["address"] = bee_address();
         data["chequebookAddress"] = bee_chequebook_address();
         data["peersCount"] = bee_peers();
+        data["debugPort"] = g_debug_port;
 
         auto lastcheques = bee_lastcheques();
-        long totalAmount = 0;
-        long uncashedAmount = 0;
+        double totalAmount = 0;
+        double uncashedAmount = 0;
         int availableTicket = 0;
         if (std::get<0>(lastcheques) == 0){
             std::list<nlohmann::json> cheques = std::get<1>(lastcheques);
             for (auto & cheque : cheques){
-                if (cheque.contains("lastreceived")){
-                    auto lastReceived = cheque.at("lastreceived");
-                    if (lastReceived.contains("payout")){
-                        availableTicket++;
-                        totalAmount += lastReceived.at("payout").get<long>();
-                    }
-                }
+                auto lastReceived = cheque.at("lastreceived");
+                availableTicket++;
+                totalAmount += lastReceived.at("payout").get<double>();
                 auto peer = cheque.at("peer").get<string>();
                 auto t_uncashedAmount = bee_get_uncashed_amount(peer);
                 if (t_uncashedAmount > 0 && g_auto_cashout){
@@ -210,17 +235,36 @@ void timer_cb(uv_timer_t* handle){
         }
         data["totalAmount"] = totalAmount;
         data["uncashedAmount"] = uncashedAmount;
+        data["ticketCount"] = availableTicket;
     }else {
         data["status"] = "fail";
     }
 
-    httplib::Client client(g_gateway, 80);
-    auto postData = data.dump();
-    auto res = client.Post("/agent/upload", postData, "application/json");
-    if (res && res->status == 200){
-        spdlog::info("data upload success! {}", postData);
-    }else {
-        spdlog::info("data upload fail! {}", postData);
+    if (g_auto_upload){
+        httplib::Client client(g_gateway, g_gateway_port);
+        auto postData = data.dump();
+        auto res = client.Post("/agent/upload", postData, "application/json");
+        if (res && res->status == 200){
+            spdlog::info("data upload success! {}", postData);
+        }else {
+            spdlog::info("data upload fail! {}", postData);
+        }
+
+        if (g_tx_upload_queue->size() > 0){
+            nlohmann::json tx(*g_tx_upload_queue);
+            nlohmann::json txData;
+            txData["nodeId"] = g_nodeId;
+            txData["txs"] = tx;
+            auto txUploadData = txData.dump();
+            res = client.Post("/agent/tx_upload", txUploadData, "application/json");
+            if (res && res->status == 200){
+                spdlog::info("tx data upload success! {}", txUploadData);
+                g_tx_uploaded_queue->insert(g_tx_upload_queue->begin(), g_tx_upload_queue->end());
+                g_tx_upload_queue->clear();
+            }else {
+                spdlog::info("tx data upload fail! {}", txUploadData);
+            }
+        }
     }
 }
 
@@ -233,7 +277,8 @@ int main(int argc, char **argv) {
     args::ValueFlag<string> gateway(parser, "", "default gateway: eth-swarm.io", {'g'}, "eth-swarm.io");
     args::ValueFlag<int> gateway_port(parser, "", "default gateway port: 80", {"gPort"}, 80);
     args::ValueFlag<bool> auto_cashout(parser, "", "auto cashout, default disable", {"auto"}, false);
-    args::ValueFlag<int> upload_interval(parser, "seconds", "upload interval, default 5 min", {'t'}, 300);
+    args::ValueFlag<int> upload_interval(parser, "min", "upload interval, default 5 min", {'t'}, 5);
+    args::ValueFlag<bool> auto_upload(parser, "", "auto upload data, default enable", {"upload"}, true);
     try {
         parser.ParseCLI(argc, argv);
     }catch(const args::Help&){
@@ -272,6 +317,15 @@ int main(int argc, char **argv) {
     g_gateway_port = args::get(gateway_port);
     g_auto_cashout = args::get(auto_cashout);
     g_upload_interval = args::get(upload_interval);
+    g_auto_upload = args::get(auto_upload);
+    g_nodeId = args::get(node_id);
+
+    if (g_upload_interval < 1){
+        g_upload_interval = 60 * 1000;
+        spdlog::warn("the upload interval should not be less than 1 minute!");
+    }else {
+        g_upload_interval = g_upload_interval * 1000 * 60;
+    }
 
     printf("agent started! \nbee host: %s, debug port: %d, node_id: %s, gateway: %s:%d\n", g_host.c_str(), g_debug_port, args::get(node_id).c_str(), g_gateway.c_str(), g_gateway_port);
 
