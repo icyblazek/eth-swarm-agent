@@ -118,7 +118,7 @@ std::tuple<int, std::list<nlohmann::json>> bee_lastcheques() {
 }
 
 double bee_get_cumulative_payout(const string &peer) {
-    long payout = 0;
+    double payout = 0;
 
     if (auto res = g_httpClient->Get(("/chequebook/cheque/" + peer).c_str())) {
         if (res && res->status == 200) {
