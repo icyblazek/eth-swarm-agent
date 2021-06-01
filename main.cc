@@ -38,7 +38,7 @@ std::tuple<int, string> bee_health() {
     int res_code = -1;
     string version = "unknown";
     if (auto res = g_httpClient->Get("/health")) {
-        if (res && res->status == 200) {
+        if (res->status == 200) {
             auto json = nlohmann::json::parse(res->body);
             if (json.contains("status") && json.at("status").get<string>() == "ok") {
                 res_code = 0;
@@ -54,7 +54,7 @@ std::tuple<int, string> bee_health() {
 int bee_peers() {
     int peerCount = 0;
     if (auto res = g_httpClient->Get("/peers")) {
-        if (res && res->status == 200) {
+        if (res->status == 200) {
             auto json = nlohmann::json::parse(res->body);
             peerCount = json.at("peers").size();
         }
@@ -65,7 +65,7 @@ int bee_peers() {
 string bee_address() {
     string address;
     if (auto res = g_httpClient->Get("/addresses")) {
-        if (res && res->status == 200) {
+        if (res->status == 200) {
             auto json = nlohmann::json::parse(res->body);
             if (json.contains("ethereum")) {
                 address = json.at("ethereum").get<string>();
@@ -78,7 +78,7 @@ string bee_address() {
 string bee_chequebook_address() {
     string address;
     if (auto res = g_httpClient->Get("/chequebook/address")) {
-        if (res && res->status == 200) {
+        if (res->status == 200) {
             /**
              * after bee 0.6.0,  chequebookaddress change to chequebookAddress
              */
@@ -98,7 +98,7 @@ std::tuple<int, std::list<nlohmann::json>> bee_lastcheques() {
     string body;
     std::list<nlohmann::json> peers;
     if (auto res = g_httpClient->Get("/chequebook/cheque")) {
-        if (res && res->status == 200) {
+        if (res->status == 200) {
             res_code = 0;
             auto json = nlohmann::json::parse(res->body);
             if (json.contains("lastcheques")) {
@@ -121,7 +121,7 @@ double bee_get_cumulative_payout(const string &peer) {
     double payout = 0;
 
     if (auto res = g_httpClient->Get(("/chequebook/cheque/" + peer).c_str())) {
-        if (res && res->status == 200) {
+        if (res->status == 200) {
             auto json = nlohmann::json::parse(res->body);
             if (json.contains("lastreceived")) {
                 auto lastReceived = json.at("lastreceived");
@@ -138,25 +138,23 @@ double bee_get_last_cashed_payout(const string &peer, double cashout_amount) {
     double payout = 0;
 
     if (auto res = g_httpClient->Get(("/chequebook/cashout/" + peer).c_str())) {
-        if (res) {
-            char tx[512];
-            if (res->status == 200) {
-                auto json = nlohmann::json::parse(res->body);
-                if (json.contains("cumulativePayout")) {
-                    payout = json.at("cumulativePayout").get<double>();
-                    auto transactionHash = json.at("transactionHash").get<string>();
+        char tx[512];
+        if (res->status == 200) {
+            auto json = nlohmann::json::parse(res->body);
+            if (json.contains("cumulativePayout")) {
+                payout = json.at("cumulativePayout").get<double>();
+                auto transactionHash = json.at("transactionHash").get<string>();
 
-                    sprintf(tx, "%s,%s,%f", peer.c_str(), transactionHash.c_str(), payout);
-                }
-            } else if (res->status == 404) {
-                sprintf(tx, "%s,%s,%f", peer.c_str(), "", cashout_amount);
+                sprintf(tx, "%s,%s,%f", peer.c_str(), transactionHash.c_str(), payout);
             }
-            string txStr(tx);
+        } else if (res->status == 404) {
+            sprintf(tx, "%s,%s,%f", peer.c_str(), "", cashout_amount);
+        }
+        string txStr(tx);
 
-            auto iter = g_tx_uploaded_queue->find(txStr);
-            if (iter == g_tx_uploaded_queue->end()) {
-                g_tx_upload_queue->insert(txStr);
-            }
+        auto iter = g_tx_uploaded_queue->find(txStr);
+        if (iter == g_tx_uploaded_queue->end()) {
+            g_tx_upload_queue->insert(txStr);
         }
     }
     return payout;
@@ -175,7 +173,7 @@ bool bee_cashout(const string &peer, double uncashedAmount) {
     bool success = false;
     spdlog::info("uncashed cheque for {} ({} uncashed)", peer, uncashedAmount);
     if (auto res = g_httpClient->Post(("/chequebook/cashout/" + peer).c_str())) {
-        if (res && res->status == 200) {
+        if (res->status == 200) {
             auto json = nlohmann::json::parse(res->body);
             if (json.contains("transactionHash")) {
                 auto transactionHash = json.at("transactionHash").get<string>();
@@ -200,7 +198,7 @@ bool bee_cashout(const string &peer, double uncashedAmount) {
 
 std::tuple<double, double> bee_get_balance() {
     if (auto res = g_httpClient->Get("/chequebook/balance")) {
-        if (res && res->status == 200) {
+        if (res->status == 200) {
             auto json = nlohmann::json::parse(res->body);
             double totalBalance = json.at("totalBalance").get<double>();
             double availableBalance = json.at("availableBalance").get<double>();
@@ -252,7 +250,7 @@ void timer_cb(uv_timer_t *handle) {
         data["uncashedAmount"] = uncashedAmount;
         data["ticketCount"] = availableTicket;
     } else {
-        data["status"] = "fail";
+        return;
     }
 
     if (g_auto_upload) {
@@ -348,6 +346,8 @@ int main(int argc, char **argv) {
 
     g_httpClient = new httplib::Client(g_host, g_debug_port);
     g_httpClient->set_keep_alive(true);
+    g_httpClient->set_read_timeout(5, 0);
+    g_httpClient->set_connection_timeout(3, 0);
 
     uv_loop_t *main_loop = uv_default_loop();
 
