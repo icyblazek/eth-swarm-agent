@@ -239,7 +239,7 @@ void timer_cb(uv_timer_t *handle) {
                 auto peer = cheque.at("peer").get<string>();
                 auto t_uncashedAmount = bee_get_uncashed_amount(peer);
                 if (t_uncashedAmount > 0 && g_auto_cashout) {
-                    bee_cashout(peer, uncashedAmount);
+                    bee_cashout(peer, t_uncashedAmount);
                 }
                 uncashedAmount += t_uncashedAmount;
             }
