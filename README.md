@@ -23,7 +23,7 @@ solve data security and IP management problems without public network.
       -n, --nid                         eth-swarm platform node id
       --host                            default localhost
       -d                                default 1635
-      -g                                default gateway: eth-swarm.io
+      -g                                default gateway: api.eth-swarm.io
       --gPort                           default gateway port: 80
       --auto                            auto cashout, default disable
       -t[min]                           upload interval, default 5 min
