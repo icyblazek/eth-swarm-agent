@@ -22,6 +22,7 @@
 
 using namespace std;
 
+string g_version = "beta v1.0";
 string g_host = "localhost";
 int g_debug_port = 1635;
 string g_gateway = "api.eth-swarm.io";
@@ -341,7 +342,7 @@ int main(int argc, char **argv) {
         g_upload_interval = g_upload_interval * 1000 * 60;
     }
 
-    printf("agent started! \nbee host: %s, debug port: %d, node_id: %s, gateway: %s:%d\n", g_host.c_str(), g_debug_port,
+    printf("bee_agent started! version: %s \nbee host: %s, debug port: %d, node_id: %s, gateway: %s:%d\n", g_version.c_str(), g_host.c_str(), g_debug_port,
            args::get(node_id).c_str(), g_gateway.c_str(), g_gateway_port);
 
     g_httpClient = new httplib::Client(g_host, g_debug_port);
